@@ -17,22 +17,6 @@ const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const loginStore = useAuthStore((state) => state.login);
 
-  const applyPreset = (role: 'bibliothecaire' | 'adherent') => {
-    setIsLogin(true);
-    setError('');
-    if (role === 'bibliothecaire') {
-      setUsername('admin');
-      setEmail('bibliothecaire@biblioia.fr');
-      setPassword('admin123');
-      setSelectedRole('bibliothecaire');
-      return;
-    }
-    setUsername('adherent');
-    setEmail('adherent@biblioia.fr');
-    setPassword('adherent123');
-    setSelectedRole('adherent');
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -99,25 +83,6 @@ const LoginPage: React.FC = () => {
             onClick={() => setIsLogin(false)}
           >
             Inscription
-          </button>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 mb-6">
-          <button
-            type="button"
-            onClick={() => applyPreset('adherent')}
-            className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-left transition-all hover:border-primary/40 hover:bg-primary/5"
-          >
-            <div className="text-xs font-bold uppercase tracking-wide text-slate-400">Connexion rapide</div>
-            <div className="mt-1 text-sm font-semibold text-slate-900">Entrer comme client</div>
-          </button>
-          <button
-            type="button"
-            onClick={() => applyPreset('bibliothecaire')}
-            className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-left transition-all hover:border-primary/40 hover:bg-primary/5"
-          >
-            <div className="text-xs font-bold uppercase tracking-wide text-slate-400">Connexion rapide</div>
-            <div className="mt-1 text-sm font-semibold text-slate-900">Entrer comme bibliothécaire</div>
           </button>
         </div>
 

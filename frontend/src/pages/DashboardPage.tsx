@@ -10,6 +10,7 @@ import {
   ArrowRight,
   Clock
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar/Navbar';
 import api from '../api';
 import { Loan, User, Book } from '../types';
@@ -26,6 +27,8 @@ const DashboardPage: React.FC = () => {
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchDashboardData();
@@ -162,7 +165,10 @@ const DashboardPage: React.FC = () => {
             <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden h-full">
               <div className="p-6 border-b border-slate-100 flex items-center justify-between">
                 <h2 className="text-xl font-bold text-slate-900">Emprunts récents</h2>
-                <button className="text-primary text-sm font-bold flex items-center gap-1 hover:underline">
+                <button 
+                  onClick={() => navigate('/emprunts')}
+                  className="text-primary text-sm font-bold flex items-center gap-1 hover:underline"
+                >
                   Voir tout <ArrowRight size={16} />
                 </button>
               </div>
