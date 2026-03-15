@@ -1,32 +1,96 @@
 import json, re, logging, httpx
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from backend.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Mapping des mots courants vers les catégories de la BDD
+# ---------------------------------------------------------------------------
+# Table de correspondance : mots naturels → catégorie exacte en BDD
+# ---------------------------------------------------------------------------
 CATEGORY_KEYWORDS = {
-    "policier": ["Policier", "policier", "polar", "crime", "enquête", "détective", "thriller"],
-    "sf": ["SF/Fantastique", "science-fiction", "sci-fi", "sf", "fantastique", "fantasy", "magie"],
-    "romance": ["Romance", "amour", "romantique", "romance"],
-    "histoire": ["Histoire", "historique", "histoire"],
-    "jeunesse": ["Jeunesse", "enfant", "jeunesse", "jeune"],
-    "classique": ["Classique", "classique", "littérature"],
-    "psychologie": ["Psychologie", "psycho", "développement personnel"],
-    "dystopie": ["Dystopie", "dystopie", "post-apocalyptique", "futur"],
-    "biographie": ["Biographie", "biographie", "autobiographie", "mémoires"],
-    "philosophie": ["Philosophie", "philosophie", "philo"],
+    "Policier":       ["policier", "polar", "crime", "enquête", "détective", "thriller",
+                       "meurtre", "mystère", "inspecteur", "commissaire"],
+    "SF/Fantastique": ["sf", "science-fiction", "science fiction", "fantastique", "fantasy",
+                       "magie", "magique", "sorcier", "dragon", "elfe", "futuriste",
+                       "espace", "robot", "extraterrestre", "harry potter", "tolkien"],
+    "Romance":        ["romance", "amour", "romantique", "sentimental", "coup de foudre",
+                       "histoire d'amour", "passion"],
+    "Histoire":       ["histoire", "historique", "guerre", "médiéval", "antiquité",
+                       "révolution", "empire", "moyen-âge", "napoléon"],
+    "Jeunesse":       ["jeunesse", "enfant", "enfants", "jeune", "ado", "adolescent",
+                       "conte", "illustration"],
+    "Classique":      ["classique", "littérature classique", "19ème", "balzac", "hugo",
+                       "zola", "flaubert", "stendhal"],
+    "Psychologie":    ["psychologie", "psycho", "développement personnel", "bien-être",
+                       "mental", "comportement", "thérapie"],
+    "Dystopie":       ["dystopie", "dystopique", "post-apocalyptique", "futur sombre",
+                       "société totalitaire", "orwell", "1984", "sombre", "ambiance sombre"],
+    "Biographie":     ["biographie", "autobiographie", "mémoires", "vie de", "portrait"],
+    "Philosophie":    ["philosophie", "philo", "éthique", "existence", "pensée",
+                       "nietzsche", "sartre", "camus"],
 }
 
+# Mots à ignorer lors de la recherche par mots-clés
+STOP_WORDS = {
+    "je", "un", "une", "des", "le", "la", "les", "du", "de", "cherche", "veux",
+    "voudrais", "aimerais", "trouve", "livre", "roman", "bouquin", "me", "recommande",
+    "suggère", "avoir", "lire", "sur", "avec", "pour", "mais", "qui", "que", "quoi",
+    "comme", "genre", "type", "style", "envie", "quelque", "chose", "peu", "très",
+    "plus", "aussi", "même", "pas", "non", "oui", "merci", "bonjour", "svp",
+    "stp", "vous", "avez", "est", "sont", "dans", "par", "and", "the",
+}
+
+
 def extract_category_from_query(query: str) -> Optional[str]:
-    """Extrait la catégorie de livre depuis une requête en langage naturel."""
+    """
+    Détecte si la requête correspond à une catégorie connue.
+    Retourne le nom exact tel qu'en BDD (ex: 'SF/Fantastique').
+    """
     query_lower = query.lower()
     for db_category, keywords in CATEGORY_KEYWORDS.items():
         for kw in keywords:
-            if kw.lower() in query_lower:
-                # Retourne le nom exact de la catégorie BDD (premier élément)
-                return keywords[0]
+            if kw in query_lower:
+                return db_category
     return None
+
+
+def search_books_in_catalog(query: str, catalog: List[dict], max_results: int = 8) -> Tuple[List[dict], str]:
+    """
+    Recherche intelligente dans le catalogue :
+    1. Par catégorie détectée (le plus fiable)
+    2. Par mots-clés dans titre/auteur/résumé IA (pour les requêtes descriptives)
+    Retourne (liste de livres trouvés, type de recherche effectuée)
+    """
+    # 1. Détection de catégorie
+    category = extract_category_from_query(query)
+    if category:
+        matches = [b for b in catalog if b.get("category", "").lower() == category.lower()]
+        if matches:
+            return matches[:max_results], f"category:{category}"
+
+    # 2. Recherche par mots-clés significatifs dans titre/auteur/résumé
+    keywords = [
+        w.strip(".,!?\"'") for w in query.lower().split()
+        if w.strip(".,!?\"'") not in STOP_WORDS and len(w.strip(".,!?\"'")) > 2
+    ]
+
+    if keywords:
+        scored = []
+        for book in catalog:
+            text = (
+                f"{book.get('title', '')} {book.get('author', '')} "
+                f"{book.get('category', '')} {book.get('resume_ia', '')}"
+            ).lower()
+            score = sum(1 for kw in keywords if kw in text)
+            if score > 0:
+                scored.append((score, book))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        matches = [b for _, b in scored[:max_results]]
+        if matches:
+            return matches, "keywords"
+
+    return [], "none"
 
 
 class LLMService:
@@ -58,54 +122,69 @@ class LLMService:
 
     async def stream_chat(self, message: str, history: List[dict], catalog: List[dict] = None):
         """
-        Chat streamé.
-        - Si une catégorie est détectée ET des livres trouvés → réponse construite directement
-          en Python (pas de LLM) pour éviter les hallucinations de TinyLlama.
-        - Sinon → appel LLM normal.
+        Chat streamé intelligent :
+        - Si des livres correspondent à la demande → réponse construite en Python
+          (pas de LLM) pour éviter les hallucinations de TinyLlama.
+        - Si aucun livre trouvé → message informatif sans LLM.
+        - Si pas de catalogue → appel LLM pour question générale.
         """
-        # 1. Détecter si l'utilisateur cherche un type de livre
-        category = extract_category_from_query(message)
-
-        if catalog and category:
-            matching_books = [
-                b for b in catalog
-                if b.get("category", "").lower() == category.lower()
-            ][:8]
+        if catalog:
+            matching_books, search_type = search_books_in_catalog(message, catalog)
 
             if matching_books:
-                # On construit la réponse nous-mêmes, sans passer par le LLM
                 book_lines = "\n".join(
-                    [f"• « {b['title']} » — {b['author']}" for b in matching_books]
+                    [f"  • « {b['title']} » de {b['author']} ({b.get('category', '')})"
+                     for b in matching_books]
                 )
-                response_text = (
-                    f"Bien sûr ! Voici les livres de type {category} disponibles dans notre bibliothèque :\n\n"
-                    f"{book_lines}\n\n"
-                    f"Cliquez sur « Lancer la recherche » pour les voir en détail 📚"
+
+                if search_type.startswith("category:"):
+                    category = search_type.split(":")[1]
+                    intro = f"Bien sûr ! Voici les ouvrages de type {category} disponibles dans notre bibliothèque :"
+                else:
+                    intro = "J'ai trouvé des ouvrages qui pourraient correspondre à votre recherche :"
+
+                available = [b for b in matching_books if b.get("quantity_available", 0) > 0]
+                unavailable = len(matching_books) - len(available)
+
+                footer_parts = []
+                if unavailable > 0:
+                    footer_parts.append(f"({unavailable} ouvrage(s) momentanément indisponible(s) en rayon)")
+                footer_parts.append(
+                    "Cliquez sur « Lancer la recherche basée sur notre discussion » "
+                    "pour les voir en détail et les emprunter 📚"
                 )
-                # On yield caractère par caractère pour garder l'effet streaming
+
+                response_text = f"{intro}\n\n{book_lines}\n\n" + "\n".join(footer_parts)
                 for char in response_text:
                     yield char
-                return  # On s'arrête là, pas besoin du LLM
+                return
 
-        # 2. Pas de catégorie détectée → appel LLM normal
-        prompt = "<|system|>\nTu es un bibliothécaire amical. Réponds TOUJOURS en français. Sois bref (3 phrases max).</s>\n"
+            # Aucun livre trouvé
+            response_text = (
+                "Je n'ai pas trouvé d'ouvrages correspondant exactement à votre demande dans notre catalogue. "
+                "Essayez avec d'autres mots-clés, ou utilisez la recherche classique en haut de page. "
+                "N'hésitez pas à reformuler ! 😊"
+            )
+            for char in response_text:
+                yield char
+            return
 
+        # Pas de catalogue → appel LLM pour question générale
+        prompt = (
+            "<|system|>\nTu es un bibliothécaire amical. "
+            "Réponds TOUJOURS en français. Sois chaleureux et bref (3 phrases max).</s>\n"
+        )
         for msg in history[-2:]:
             role = "user" if msg.get("role") == "user" else "assistant"
             content = msg.get("content", "")
             prompt += f"<|{role}|>\n{content}</s>\n"
-
         prompt += f"<|user|>\n{message}</s>\n<|assistant|>\n"
 
         payload = {
             "model": self.model,
             "prompt": prompt,
             "stream": True,
-            "options": {
-                "num_predict": 150,
-                "temperature": 0.7,
-                "top_p": 0.9
-            }
+            "options": {"num_predict": 150, "temperature": 0.7, "top_p": 0.9}
         }
 
         async with httpx.AsyncClient(timeout=120.0) as client:
@@ -131,37 +210,16 @@ class LLMService:
 
     async def natural_language_search(self, user_query: str, catalog: List[dict]) -> List[str]:
         """
-        Recherche des livres correspondant à la requête.
-        Priorité : catégorie détectée > mots-clés > LLM fallback
+        Recherche des livres pour le bouton 'Lancer la recherche'.
+        Priorité : catégorie > mots-clés > LLM fallback
         """
-        # 1. Détection de catégorie (le cas le plus courant : "je veux un policier")
-        category = extract_category_from_query(user_query)
-        if category:
-            category_matches = [
-                b["id"] for b in catalog
-                if b.get("category", "").lower() == category.lower()
-            ]
-            if category_matches:
-                logger.info(f"Category match '{category}': {len(category_matches)} books found")
-                return category_matches[:5]
+        matching_books, search_type = search_books_in_catalog(user_query, catalog, max_results=5)
 
-        # 2. Recherche par mots-clés sur titre/auteur/catégorie
-        # On filtre les mots trop courts ou trop génériques
-        stop_words = {"je", "un", "une", "des", "le", "la", "les", "du", "de", "cherche",
-                      "veux", "voudrais", "aimerais", "trouve", "livre", "roman", "bouquin",
-                      "me", "recommande", "suggère", "avoir", "lire", "sur", "avec", "pour"}
-        keywords = [w for w in user_query.lower().split() if w not in stop_words and len(w) > 2]
+        if matching_books:
+            logger.info(f"Search '{search_type}': {len(matching_books)} books found")
+            return [b["id"] for b in matching_books]
 
-        matched_ids = []
-        for book in catalog:
-            text = f"{book['title']} {book['author']} {book['category']} {book.get('resume_ia', '')}".lower()
-            if any(kw in text for kw in keywords):
-                matched_ids.append(book["id"])
-
-        if len(matched_ids) >= 2:
-            return matched_ids[:5]
-
-        # 3. Fallback LLM si rien trouvé
+        # Fallback LLM si vraiment rien trouvé
         catalog_compact = [
             {"id": str(b["id"])[-4:], "t": b["title"][:25], "c": b.get("category", "")}
             for b in catalog[:15]
@@ -187,7 +245,7 @@ class LLMService:
         except Exception:
             pass
 
-        return matched_ids[:5]
+        return []
 
     async def analyze_stock(self, stats: dict) -> str:
         return "Analyse désactivée."
