@@ -101,11 +101,11 @@ const AddBookModal: React.FC<{ onClose: () => void; onSuccess: () => void }> = (
     }
     setIsGenerating(true);
     try {
-      const response = await api.post('/ai/chat', { 
-        message: `Génère un résumé très court (2 lignes) pour le livre "${formData.title}" de ${formData.author}.`,
-        history: []
+      const response = await api.post('/ai/generate-summary', { 
+        title: formData.title,
+        author: formData.author
       });
-      setFormData({ ...formData, resume_ia: response.data.response });
+      setFormData({ ...formData, resume_ia: response.data.summary });
     } catch (err) {
       alert("Erreur lors de la génération du résumé.");
     } finally {
@@ -117,7 +117,12 @@ const AddBookModal: React.FC<{ onClose: () => void; onSuccess: () => void }> = (
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      await api.post('/books/', formData);
+      // Clean data: replace empty strings with null for optional fields like ISBN
+      const submissionData = {
+        ...formData,
+        isbn: formData.isbn.trim() || null
+      };
+      await api.post('/books/', submissionData);
       onSuccess();
       onClose();
     } catch (err) {

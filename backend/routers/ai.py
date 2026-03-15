@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select, func
 from datetime import datetime, timedelta
@@ -9,11 +10,41 @@ from backend.models.book import Book
 from backend.models.user import User
 from backend.models.loan import Loan
 from backend.models.ai_analysis import AIAnalysis
-from backend.schemas.ai import SearchQuery, SummaryResponse, StockAnalysisResponse, ChatRequest, ChatResponse
+from backend.schemas.ai import SearchQuery, SummaryResponse, StockAnalysisResponse, ChatRequest, ChatResponse, BookSummaryRequest
 from backend.services.llm_service import llm_service
 from backend.services.queue_service import queue_service
 
 router = APIRouter(prefix="/ai", tags=["ai"])
+
+@router.post("/chat/stream")
+async def chat_stream(
+    request: ChatRequest,
+    current_user: User = Depends(get_current_user)
+):
+    history = [{"role": m.role, "content": m.content} for m in (request.history or [])]
+    
+    async def generate():
+        async for chunk in llm_service.stream_chat(request.message, history):
+            yield chunk
+
+    return StreamingResponse(generate(), media_type="text/plain")
+
+@router.post("/generate-summary", response_model=SummaryResponse)
+async def generate_pre_summary(
+    request: BookSummaryRequest,
+    current_user: User = Depends(require_role("bibliothecaire"))
+):
+    try:
+        summary = await queue_service.enqueue_llm_task(
+            llm_service.generate_book_summary,
+            request.title,
+            request.author
+        )
+        return {"summary": summary}
+    except TimeoutError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Service IA indisponible")
 
 @router.post("/summary/{book_id}", response_model=SummaryResponse)
 async def generate_summary(

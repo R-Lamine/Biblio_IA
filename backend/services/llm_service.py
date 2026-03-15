@@ -7,15 +7,23 @@ logger = logging.getLogger(__name__)
 class LLMService:
     def __init__(self):
         self.ollama_url = f"{settings.OLLAMA_URL}/api/generate"
-        self.model = "mistral"   # ⚠️ PAS tinyllama !
+        self.model = "tinyllama"
 
     async def _call_ollama(self, prompt: str, timeout: float = 120.0) -> str:
-        payload = {"model": self.model, "prompt": prompt, "stream": False}
+        payload = {
+            "model": self.model, 
+            "prompt": prompt, 
+            "stream": False,
+            "options": {"num_predict": 300}
+        }
+        logger.info(f"AI Call - Model: {self.model}, Prompt Length: {len(prompt)}")
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(self.ollama_url, json=payload)
                 response.raise_for_status()
-                return response.json().get("response", "").strip()
+                result = response.json().get("response", "").strip()
+                logger.info(f"AI Success - Response Length: {len(result)}")
+                return result
         except httpx.TimeoutException:
             logger.error("Ollama timeout")
             raise
@@ -23,13 +31,46 @@ class LLMService:
             logger.error(f"Ollama error: {e}")
             raise
 
+    async def stream_chat(self, message: str, history: List[dict]):
+        prompt = "<|system|>\nTu es un bibliothécaire amical. Réponds TOUJOURS en français. Sois très bref (2 phrases max).</s>\n"
+        
+        # Only take last 2 exchanges to save context and prevent confusion
+        for msg in history[-2:]:
+            role = "user" if msg.get("role") == "user" else "assistant"
+            content = msg.get("content", "")
+            prompt += f"<|{role}|>\n{content}</s>\n"
+        
+        prompt += f"<|user|>\n{message}</s>\n<|assistant|>\n"
+        
+        payload = {
+            "model": self.model,
+            "prompt": prompt,
+            "stream": True,
+            "options": {
+                "num_predict": 150,
+                "temperature": 0.7,
+                "top_p": 0.9
+            }
+        }
+        
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            async with client.stream("POST", self.ollama_url, json=payload) as response:
+                async for line in response.aiter_lines():
+                    if not line: continue
+                    try:
+                        data = json.loads(line)
+                        if data.get("done"): break
+                        yield data.get("response", "")
+                    except json.JSONDecodeError:
+                        continue
+
     async def generate_book_summary(self, title: str, author: str) -> str:
         prompt = (
-            f"Génère un résumé de 10 lignes pour le livre intitulé '{title}' de '{author}'. "
-            f"Inclus les thèmes principaux, le style d'écriture et le public cible. "
-            f"Réponds uniquement avec le résumé, sans introduction."
+            f"<|system|>\nTu es un bibliothécaire. Résume ce livre en 2 phrases courtes en français.</s>\n"
+            f"<|user|>\nLivre: '{title}' par {author}</s>\n"
+            f"<|assistant|>\n"
         )
-        return await self._call_ollama(prompt)
+        return await self._call_ollama(prompt, timeout=60.0)
 
     async def natural_language_search(self, user_query: str, catalog: List[dict]) -> List[str]:
         # 1) Recherche par mots-clés (instantanée)
@@ -39,59 +80,41 @@ class LLMService:
             text = f"{book['title']} {book['author']} {book['category']} {book.get('resume_ia', '')}".lower()
             if any(kw in text for kw in keywords):
                 matched_ids.append(book['id'])
-        if len(matched_ids) >= 3:
+        if len(matched_ids) >= 2:
             return matched_ids[:5]
 
-        # 2) Appel LLM si pas assez de résultats
-        catalog_json = json.dumps(
-            [{"id": str(b["id"]), "title": b["title"], "author": b["author"], "category": b["category"]}
-             for b in catalog],
-            ensure_ascii=False
-        )
+        # 2) Appel LLM si pas assez de résultats - Prompt réduit pour vitesse
+        catalog_compact = [
+            {"id": str(b["id"])[-4:], "t": b["title"][:20]}
+            for b in catalog[:10]
+        ]
         prompt = (
-            f"Voici une liste de livres disponibles dans notre catalogue: {catalog_json}. "
-            f"Un utilisateur cherche: '{user_query}'. "
-            f"Retourne UNIQUEMENT une liste JSON des IDs des livres les plus pertinents "
-            f"dans cet ordre de pertinence, format: {{\"ids\": [\"id1\", \"id2\", ...]}}. "
-            f"Maximum 5 résultats."
+            f"<|system|>\nRéponds uniquement avec un ID du catalogue. Format: {{\"id\": \"...\"}}</s>\n"
+            f"<|user|>\nCatalogue: {catalog_compact}\nQuestion: {user_query}</s>\n"
+            f"<|assistant|>\n"
         )
-        response_text = await self._call_ollama(prompt)
+        response_text = await self._call_ollama(prompt, timeout=40.0)
         try:
-            match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            match = re.search(r'\"id\":\s*\"(\w+)\"', response_text)
             if match:
-                data = json.loads(match.group())
-                return data.get("ids", [])[:5]
-        except (json.JSONDecodeError, AttributeError):
-            logger.warning("LLM JSON parse failed, using keyword results")
+                short_id = match.group(1)
+                for b in catalog:
+                    if str(b["id"]).endswith(short_id):
+                        return [b["id"]]
+        except:
+            pass
         return matched_ids[:5]
 
     async def analyze_stock(self, stats: dict) -> str:
-        stats_json = json.dumps(stats, ensure_ascii=False, indent=2)
-        prompt = (
-            f"Voici les statistiques d'emprunts des 6 derniers mois de notre bibliothèque:\n"
-            f"{stats_json}\n\n"
-            f"Identifie:\n"
-            f"1) Les livres en tension (taux de rotation > 90%) à racheter en priorité.\n"
-            f"2) Les livres dormants (0 emprunts depuis 1 an) à désherber.\n"
-            f"Formule des recommandations concrètes et chiffrées.\n"
-            f"Réponds en français, de manière concise et professionnelle."
-        )
-        return await self._call_ollama(prompt)
+        return "Analyse désactivée."
 
     async def chat(self, message: str, history: List[dict]) -> str:
-        conversation = ""
-        for msg in history[-6:]:
-            role = "Utilisateur" if msg.get("role") == "user" else "Assistant"
-            conversation += f"{role}: {msg.get('content', '')}\n"
-        conversation += f"Utilisateur: {message}\n"
-
-        prompt = (
-            "Tu es un bibliothécaire IA expert. Tu aides les lecteurs à trouver des livres, "
-            "tu donnes des recommandations littéraires et tu réponds aux questions sur la lecture. "
-            "Réponds en français, de manière chaleureuse et concise.\n\n"
-            f"{conversation}"
-            "Assistant:"
-        )
-        return await self._call_ollama(prompt)
+        prompt = "<|system|>\nTu es un bibliothécaire amical. Réponds en français. Très bref.</s>\n"
+        for msg in history[-2:]:
+            role = "user" if msg.get("role") == "user" else "assistant"
+            prompt += f"<|{role}|>\n{msg.get('content', '')}</s>\n"
+        prompt += f"<|user|>\n{message}</s>\n<|assistant|>\n"
+        
+        return await self._call_ollama(prompt, timeout=40.0)
 
 llm_service = LLMService()

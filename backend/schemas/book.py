@@ -11,6 +11,7 @@ class BookCreate(BaseModel):
     shelf_row: Optional[str] = None
     shelf_number: Optional[str] = None
     quantity_total: int = 1
+    resume_ia: Optional[str] = None
 
 class BookUpdate(BaseModel):
     title: Optional[str] = None
@@ -22,3 +23,4 @@ class BookUpdate(BaseModel):
     shelf_row: Optional[str] = None
     shelf_number: Optional[str] = None
     quantity_total: Optional[int] = None
+    resume_ia: Optional[str] = None

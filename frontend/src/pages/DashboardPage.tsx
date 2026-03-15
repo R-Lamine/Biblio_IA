@@ -111,57 +111,9 @@ const DashboardPage: React.FC = () => {
           />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* AI Widget */}
+        <div className="grid grid-cols-1 gap-8">
+          {/* Recent Activity - Now full width since AI is removed */}
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-3xl p-6 shadow-sm border-2 border-primary/10 relative overflow-hidden h-full">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="bg-primary/10 p-2 rounded-xl text-primary">
-                  <Bot size={24} />
-                </div>
-                <h2 className="text-xl font-bold text-slate-900">Assistant IA : Analyse</h2>
-              </div>
-
-              <div className="bg-slate-50 rounded-2xl p-4 min-h-[200px] mb-6 border border-slate-100">
-                {isAiLoading ? (
-                  <div className="flex flex-col items-center justify-center h-full py-12 gap-3">
-                    <Loader2 className="animate-spin text-primary" size={32} />
-                    <p className="text-sm text-slate-500 font-medium italic text-center">
-                      Analyse des stocks et des flux d'emprunts en cours...
-                    </p>
-                  </div>
-                ) : aiAnalysis ? (
-                  <div className="prose prose-sm text-slate-600 italic leading-relaxed">
-                    {aiAnalysis}
-                  </div>
-                ) : (
-                  <p className="text-slate-400 text-sm italic text-center py-12">
-                    Aucune analyse récente. Lancez une analyse pour obtenir des insights sur votre catalogue.
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-3">
-                <button 
-                  onClick={handleRunAiAnalysis}
-                  disabled={isAiLoading}
-                  className="w-full py-3 bg-primary hover:bg-primary/90 text-white font-bold rounded-xl shadow-lg shadow-primary/20 flex items-center justify-center gap-2 transition-all"
-                >
-                  {isAiLoading ? <Loader2 className="animate-spin" size={20} /> : <Bot size={20} />}
-                  Analyser le stock
-                </button>
-                {aiAnalysis && !isAiLoading && (
-                  <button className="w-full py-3 bg-white border-2 border-primary/20 text-primary font-bold rounded-xl hover:bg-primary/5 transition-all flex items-center justify-center gap-2">
-                    <CheckCircle2 size={20} />
-                    Valider les suggestions
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Recent Activity */}
-          <div className="lg:col-span-2">
             <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden h-full">
               <div className="p-6 border-b border-slate-100 flex items-center justify-between">
                 <h2 className="text-xl font-bold text-slate-900">Emprunts récents</h2>

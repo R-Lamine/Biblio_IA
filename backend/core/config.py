@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     MYSQL_PASSWORD: str
     DATABASE_URL: str
     REDIS_URL: str
-    OLLAMA_URL: str
+    OLLAMA_URL: str = "http://biblio_ia-ollama-1:11434"
     JWT_SECRET: str
     ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 30

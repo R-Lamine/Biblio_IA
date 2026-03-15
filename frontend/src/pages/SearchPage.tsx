@@ -130,20 +130,57 @@ const SearchPage: React.FC = () => {
     e.preventDefault();
     if (!chatMessage.trim() || isChatLoading) return;
 
-    const newUserMessage: Message = { role: 'user', content: chatMessage };
+    const userMessage = chatMessage;
+    const newUserMessage: Message = { role: 'user', content: userMessage };
     setChatHistory(prev => [...prev, newUserMessage]);
     setChatMessage('');
     setIsChatLoading(true);
 
+    // Placeholder for the assistant message
+    setChatHistory(prev => [...prev, { role: 'assistant', content: '' }]);
+
     try {
-      const response = await api.post<{ response: string }>('/ai/chat', {
-        message: chatMessage,
-        history: chatHistory
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000/api'}/ai/chat/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          message: userMessage,
+          history: chatHistory
+        })
       });
-      setChatHistory(prev => [...prev, { role: 'assistant', content: response.data.response }]);
+
+      if (!response.ok) throw new Error('Streaming failed');
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let assistantContent = '';
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          const chunk = decoder.decode(value, { stream: true });
+          assistantContent += chunk;
+          
+          setChatHistory(prev => {
+            const newHistory = [...prev];
+            newHistory[newHistory.length - 1].content = assistantContent;
+            return newHistory;
+          });
+        }
+      }
     } catch (err) {
       console.error(err);
-      setChatHistory(prev => [...prev, { role: 'assistant', content: "Désolé, j'ai rencontré une erreur. Réessayez plus tard." }]);
+      setChatHistory(prev => {
+        const newHistory = [...prev];
+        newHistory[newHistory.length - 1].content = "Désolé, j'ai rencontré une erreur. Réessayez plus tard.";
+        return newHistory;
+      });
     } finally {
       setIsChatLoading(false);
     }

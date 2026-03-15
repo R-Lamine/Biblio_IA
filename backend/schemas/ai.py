@@ -5,6 +5,10 @@ from typing import List, Optional
 class SearchQuery(BaseModel):
     query: str
 
+class BookSummaryRequest(BaseModel):
+    title: str
+    author: str
+
 class SummaryResponse(BaseModel):
     summary: str
 
