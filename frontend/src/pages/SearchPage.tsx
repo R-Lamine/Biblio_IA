@@ -107,9 +107,9 @@ const SearchPage: React.FC = () => {
   const navigate = useNavigate();
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatHistory]);
+ // useEffect(() => {
+  //  chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+ // }, [chatHistory]);
 
   const handleClassicSearch = async (e: React.FormEvent) => {
     e.preventDefault();
