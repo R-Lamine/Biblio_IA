@@ -1,36 +1,29 @@
-import json, re, logging, httpx
+import json, re, logging, httpx, asyncio
 from typing import List, Optional, Tuple
 from backend.core.config import settings
 
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Table de correspondance : mots naturels → catégorie exacte en BDD
-# ---------------------------------------------------------------------------
 CATEGORY_KEYWORDS = {
     "Policier":       ["policier", "polar", "crime", "enquête", "détective", "thriller",
                        "meurtre", "mystère", "inspecteur", "commissaire"],
-    "SF/Fantastique": ["sf", "science-fiction", "science fiction", "fantastique", "fantasy",
+    "SF/Fantastique": ["science-fiction", "science fiction", "fantastique", "fantasy",
                        "magie", "magique", "sorcier", "dragon", "elfe", "futuriste",
-                       "espace", "robot", "extraterrestre", "harry potter", "tolkien"],
-    "Romance":        ["romance", "amour", "romantique", "sentimental", "coup de foudre",
+                       "espace", "robot", "extraterrestre", "tolkien"],
+    "Romance":        ["romance", "romantique", "sentimental", "coup de foudre",
                        "histoire d'amour", "passion"],
     "Histoire":       ["histoire", "historique", "guerre", "médiéval", "antiquité",
-                       "révolution", "empire", "moyen-âge", "napoléon"],
-    "Jeunesse":       ["jeunesse", "enfant", "enfants", "jeune", "ado", "adolescent",
-                       "conte", "illustration"],
+                       "révolution", "empire", "moyen-âge", "napoléon", "hist"],
+    "Jeunesse":       ["jeunesse", "enfants", "ado", "adolescent", "conte", "illustration"],
     "Classique":      ["classique", "littérature classique", "19ème", "balzac", "hugo",
                        "zola", "flaubert", "stendhal"],
-    "Psychologie":    ["psychologie", "psycho", "développement personnel", "bien-être",
+    "Psychologie":    ["psychologie", "développement personnel", "bien-être",
                        "mental", "comportement", "thérapie"],
     "Dystopie":       ["dystopie", "dystopique", "post-apocalyptique", "futur sombre",
-                       "société totalitaire", "orwell", "1984", "sombre", "ambiance sombre"],
+                       "société totalitaire", "orwell", "1984"],
     "Biographie":     ["biographie", "autobiographie", "mémoires", "vie de", "portrait"],
-    "Philosophie":    ["philosophie", "philo", "éthique", "existence", "pensée",
-                       "nietzsche", "sartre", "camus"],
+    "Philosophie":    ["philosophie", "éthique", "existence", "nietzsche", "sartre", "camus"],
 }
 
-# Mots à ignorer lors de la recherche par mots-clés
 STOP_WORDS = {
     "je", "un", "une", "des", "le", "la", "les", "du", "de", "cherche", "veux",
     "voudrais", "aimerais", "trouve", "livre", "roman", "bouquin", "me", "recommande",
@@ -38,59 +31,98 @@ STOP_WORDS = {
     "comme", "genre", "type", "style", "envie", "quelque", "chose", "peu", "très",
     "plus", "aussi", "même", "pas", "non", "oui", "merci", "bonjour", "svp",
     "stp", "vous", "avez", "est", "sont", "dans", "par", "and", "the",
+    "special", "spécial", "bien", "bon", "bonne", "super", "nouveau", "nouvelle",
+    "intéressant", "intéressante", "sympa", "cool",
 }
 
 
 def extract_category_from_query(query: str) -> Optional[str]:
-    """
-    Détecte si la requête correspond à une catégorie connue.
-    Retourne le nom exact tel qu'en BDD (ex: 'SF/Fantastique').
-    """
+    """Détecte la catégorie depuis la requête. Teste les phrases longues avant les mots courts."""
     query_lower = query.lower()
+    # Trier par longueur décroissante pour matcher "science-fiction" avant "sf"
+    all_pairs = []
     for db_category, keywords in CATEGORY_KEYWORDS.items():
         for kw in keywords:
-            if kw in query_lower:
-                return db_category
+            all_pairs.append((len(kw), kw, db_category))
+    all_pairs.sort(reverse=True)
+
+    for _, kw, db_category in all_pairs:
+        if kw in query_lower:
+            return db_category
     return None
 
 
-def search_books_in_catalog(query: str, catalog: List[dict], max_results: int = 8) -> Tuple[List[dict], str]:
+def search_books_in_catalog(query: str, catalog: List[dict], max_results: int = 20) -> Tuple[List[dict], str]:
     """
-    Recherche intelligente dans le catalogue :
-    1. Par catégorie détectée (le plus fiable)
-    2. Par mots-clés dans titre/auteur/résumé IA (pour les requêtes descriptives)
-    Retourne (liste de livres trouvés, type de recherche effectuée)
+    Priorité de recherche :
+    1. Titre ou auteur direct dans la BDD
+    2. Mots-clés dans titre/auteur/résumé IA
+    3. Catégorie détectée
     """
-    # 1. Détection de catégorie
+    query_lower = query.lower()
+
+    # Mots significatifs pour recherche titre/auteur
+    title_words = [
+        w.strip(".,!?\"'") for w in query_lower.split()
+        if w.strip(".,!?\"'") not in STOP_WORDS and len(w.strip(".,!?\"'")) > 2
+    ]
+
+    # 1. Recherche titre/auteur direct
+    if title_words:
+        direct_matches = []
+        for book in catalog:
+            title = book.get("title", "").lower()
+            author = book.get("author", "").lower()
+            score = sum(1 for w in title_words if w in title or w in author)
+            if score > 0:
+                direct_matches.append((score, book))
+
+        direct_matches.sort(key=lambda x: x[0], reverse=True)
+        if direct_matches:
+            return [b for _, b in direct_matches[:max_results]], "title_author"
+
+    # 2. Détection de catégorie (avant mots-clés résumé pour être plus fiable)
     category = extract_category_from_query(query)
     if category:
         matches = [b for b in catalog if b.get("category", "").lower() == category.lower()]
         if matches:
             return matches[:max_results], f"category:{category}"
 
-    # 2. Recherche par mots-clés significatifs dans titre/auteur/résumé
-    keywords = [
-        w.strip(".,!?\"'") for w in query.lower().split()
-        if w.strip(".,!?\"'") not in STOP_WORDS and len(w.strip(".,!?\"'")) > 2
-    ]
-
-    if keywords:
+    # 3. Recherche élargie dans résumé IA
+    if title_words:
         scored = []
         for book in catalog:
             text = (
                 f"{book.get('title', '')} {book.get('author', '')} "
-                f"{book.get('category', '')} {book.get('resume_ia', '')}"
+                f"{book.get('resume_ia', '')}"
             ).lower()
-            score = sum(1 for kw in keywords if kw in text)
+            score = sum(1 for kw in title_words if kw in text)
             if score > 0:
                 scored.append((score, book))
-
         scored.sort(key=lambda x: x[0], reverse=True)
-        matches = [b for _, b in scored[:max_results]]
-        if matches:
-            return matches, "keywords"
+        if scored:
+            return [b for _, b in scored[:max_results]], "keywords"
 
     return [], "none"
+
+
+async def stream_text(text: str):
+    """
+    Génère le texte mot par mot avec un délai pour simuler
+    une vraie réponse IA en temps réel.
+    """
+    words = text.split(" ")
+    for i, word in enumerate(words):
+        # Ajouter l'espace sauf pour le dernier mot
+        chunk = word + (" " if i < len(words) - 1 else "")
+        yield chunk
+        # Délai variable : plus court sur les mots courts, plus long sur la ponctuation
+        if word.endswith((".", "!", "?", ":\n")):
+            await asyncio.sleep(0.08)
+        elif word.endswith(","):
+            await asyncio.sleep(0.04)
+        else:
+            await asyncio.sleep(0.02)
 
 
 class LLMService:
@@ -122,11 +154,7 @@ class LLMService:
 
     async def stream_chat(self, message: str, history: List[dict], catalog: List[dict] = None):
         """
-        Chat streamé intelligent :
-        - Si des livres correspondent à la demande → réponse construite en Python
-                    (pas de LLM) pour éviter les hallucinations du modèle.
-        - Si aucun livre trouvé → message informatif sans LLM.
-        - Si pas de catalogue → appel LLM pour question générale.
+        Chat streamé intelligent avec effet de frappe progressive.
         """
         if catalog:
             matching_books, search_type = search_books_in_catalog(message, catalog)
@@ -137,15 +165,15 @@ class LLMService:
                      for b in matching_books]
                 )
 
-                if search_type.startswith("category:"):
+                if search_type == "title_author":
+                    intro = "Voici ce que j'ai trouvé dans notre catalogue :"
+                elif search_type.startswith("category:"):
                     category = search_type.split(":")[1]
-                    intro = f"Bien sûr ! Voici les ouvrages de type {category} disponibles dans notre bibliothèque :"
+                    intro = f"Voici les ouvrages de type {category} disponibles dans notre bibliothèque :"
                 else:
-                    intro = "J'ai trouvé des ouvrages qui pourraient correspondre à votre recherche :"
+                    intro = "Voici les ouvrages qui correspondent à votre recherche :"
 
-                available = [b for b in matching_books if b.get("quantity_available", 0) > 0]
-                unavailable = len(matching_books) - len(available)
-
+                unavailable = sum(1 for b in matching_books if b.get("quantity_available", 0) == 0)
                 footer_parts = []
                 if unavailable > 0:
                     footer_parts.append(f"({unavailable} ouvrage(s) momentanément indisponible(s) en rayon)")
@@ -155,18 +183,20 @@ class LLMService:
                 )
 
                 response_text = f"{intro}\n\n{book_lines}\n\n" + "\n".join(footer_parts)
-                for char in response_text:
-                    yield char
-                return
 
-            # Aucun livre trouvé
-            response_text = (
-                "Je n'ai pas trouvé d'ouvrages correspondant exactement à votre demande dans notre catalogue. "
-                "Essayez avec d'autres mots-clés, ou utilisez la recherche classique en haut de page. "
-                "N'hésitez pas à reformuler ! 😊"
-            )
-            for char in response_text:
-                yield char
+            else:
+                response_text = (
+                    "Je n'ai pas trouvé d'ouvrages correspondant à votre demande dans notre catalogue. 😕\n\n"
+                    "Quelques conseils :\n"
+                    "  • Essayez le titre exact ou le nom de l'auteur\n"
+                    "  • Précisez un genre : policier, fantastique, romance, histoire...\n"
+                    "  • Décrivez l'ambiance : sombre, aventure, futuriste, historique...\n\n"
+                    "Vous pouvez aussi utiliser la recherche classique en haut de page."
+                )
+
+            # Streaming mot par mot avec délai
+            async for chunk in stream_text(response_text):
+                yield chunk
             return
 
         # Pas de catalogue → appel LLM pour question générale
@@ -210,10 +240,9 @@ class LLMService:
 
     async def natural_language_search(self, user_query: str, catalog: List[dict]) -> List[str]:
         """
-        Recherche des livres pour le bouton 'Lancer la recherche'.
-        Priorité : catégorie > mots-clés > LLM fallback
+        Recherche pour le bouton 'Lancer la recherche' — retourne TOUS les livres trouvés.
         """
-        matching_books, search_type = search_books_in_catalog(user_query, catalog, max_results=5)
+        matching_books, search_type = search_books_in_catalog(user_query, catalog, max_results=20)
 
         if matching_books:
             logger.info(f"Search '{search_type}': {len(matching_books)} books found")
@@ -241,7 +270,7 @@ class LLMService:
                         if str(b["id"]).endswith(short_id):
                             result_ids.append(b["id"])
                 if result_ids:
-                    return result_ids[:5]
+                    return result_ids
         except Exception:
             pass
 
