@@ -128,7 +128,7 @@ async def stream_text(text: str):
 class LLMService:
     def __init__(self):
         self.ollama_url = f"{settings.OLLAMA_URL}/api/generate"
-        self.model = "tinyllama"
+        self.model = settings.OLLAMA_MODEL
 
     async def _call_ollama(self, prompt: str, timeout: float = 120.0) -> str:
         payload = {

@@ -42,6 +42,26 @@ export interface Reservation {
   status: 'pending' | 'fulfilled' | 'cancelled';
 }
 
+export interface BookAnalysisInfo {
+  id: string;
+  title: string;
+  author: string;
+  quantity_available: number;
+  quantity_total: number;
+  borrow_count: number;
+}
+
+export interface ManualAnalysisResponse {
+  period_months: number;
+  top_borrowed: BookAnalysisInfo[];
+  average_borrows: number;
+  out_of_stock: BookAnalysisInfo[];
+  rarely_borrowed: BookAnalysisInfo[];
+  never_borrowed: BookAnalysisInfo[];
+  total_books: number;
+  total_loans_in_period: number;
+}
+
 export interface AuthResponse {
   access_token: string;
   token_type: string;

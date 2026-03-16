@@ -28,6 +28,8 @@ services:
   ollama:
     image: ollama/ollama:latest
     restart: unless-stopped
+    environment:
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:0.5b}
     ports:
       - "11434:11434"
     volumes:
