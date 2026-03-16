@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 class LLMService:
     def __init__(self):
         self.ollama_url = f"{settings.OLLAMA_URL}/api/generate"
-        self.model = "tinyllama"
+        self.model = settings.OLLAMA_MODEL
 
     async def _call_ollama(self, prompt: str) -> str:
         payload = {"model": self.model, "prompt": prompt, "stream": False}

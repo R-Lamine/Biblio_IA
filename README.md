@@ -226,6 +226,7 @@ L'IA est intégrée via **Ollama** et démarre automatiquement lors du premier b
 ### Informations
 
 - **Service** : Conteneur `ollama` (basé sur `ollama/ollama:latest`)
+- **Modèle par défaut** : `qwen2.5:0.5b` (configurable via `OLLAMA_MODEL` dans `.env`)
 - **Port** : 11434
 - **Stockage des modèles** : Volume `./ollama_models`
 

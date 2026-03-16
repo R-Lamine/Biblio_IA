@@ -96,7 +96,7 @@ def search_books_in_catalog(query: str, catalog: List[dict], max_results: int = 
 class LLMService:
     def __init__(self):
         self.ollama_url = f"{settings.OLLAMA_URL}/api/generate"
-        self.model = "tinyllama"
+        self.model = settings.OLLAMA_MODEL
 
     async def _call_ollama(self, prompt: str, timeout: float = 120.0) -> str:
         payload = {
@@ -124,7 +124,7 @@ class LLMService:
         """
         Chat streamé intelligent :
         - Si des livres correspondent à la demande → réponse construite en Python
-          (pas de LLM) pour éviter les hallucinations de TinyLlama.
+                    (pas de LLM) pour éviter les hallucinations du modèle.
         - Si aucun livre trouvé → message informatif sans LLM.
         - Si pas de catalogue → appel LLM pour question générale.
         """
