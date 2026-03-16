@@ -10,6 +10,7 @@ import AdherentHomePage from './pages/AdherentHomePage';
 import MembersPage from './pages/MembersPage';
 import LoansPage from './pages/LoansPage';
 import MyLoansPage from './pages/MyLoansPage';
+import AnalysisPage from './pages/AnalysisPage';
 
 // Create a client
 const queryClient = new QueryClient();
@@ -73,6 +74,12 @@ function App() {
           <Route path="/emprunts" element={
             <ProtectedRoute role="bibliothecaire">
               <LoansPage />
+            </ProtectedRoute>
+          } />
+
+          <Route path="/analyse" element={
+            <ProtectedRoute role="bibliothecaire">
+              <AnalysisPage />
             </ProtectedRoute>
           } />
 
