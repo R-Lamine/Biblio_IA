@@ -161,7 +161,7 @@ docker-compose exec db mysql -u root -p
 ### Client
 - **Email** : adherent@biblioia.fr
 - **Mot de passe** : adherent123
-- **Rôle** : Adhérent (client)
+- **Rôle** : Adhérent (client)  
 
 ### Administrateur
 - **Email** : bibliothecaire@biblioia.fr
