@@ -20,28 +20,38 @@ router = APIRouter(prefix="/ai", tags=["ai"])
 @router.post("/chat/stream")
 async def chat_stream(
     request: ChatRequest,
-    session: AsyncSession = Depends(get_session),          # <-- AJOUT : accès BDD
+    session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     history = [{"role": m.role, "content": m.content} for m in (request.history or [])]
 
-    # Charger le catalogue complet pour que l'IA puisse citer les livres
     result = await session.execute(select(Book))
     books = result.scalars().all()
     catalog = [
-        {
-            "id": b.id,
-            "title": b.title,
-            "author": b.author,
-            "category": b.category,
-            "resume_ia": b.resume_ia
-        }
+        {"id": b.id, "title": b.title, "author": b.author,
+         "category": b.category, "resume_ia": b.resume_ia}
         for b in books
     ]
 
     async def generate():
         async for chunk in llm_service.stream_chat(request.message, history, catalog=catalog):
             yield chunk
+
+    return StreamingResponse(generate(), media_type="text/plain")
+
+
+@router.post("/generate-summary/stream")
+async def generate_summary_stream(
+    request: BookSummaryRequest,
+    current_user: User = Depends(require_role("bibliothecaire"))
+):
+    """
+    Génère un résumé en streaming mot par mot.
+    Bypasse la queue pour permettre le vrai streaming temps réel.
+    """
+    async def generate():
+        async for token in llm_service.stream_book_summary(request.title, request.author):
+            yield token
 
     return StreamingResponse(generate(), media_type="text/plain")
 
@@ -111,13 +121,8 @@ async def ai_search(
     books = result.scalars().all()
 
     catalog = [
-        {
-            "id": b.id,
-            "title": b.title,
-            "author": b.author,
-            "category": b.category,
-            "resume_ia": b.resume_ia
-        }
+        {"id": b.id, "title": b.title, "author": b.author,
+         "category": b.category, "resume_ia": b.resume_ia}
         for b in books
     ]
 

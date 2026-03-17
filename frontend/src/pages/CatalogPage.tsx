@@ -100,12 +100,37 @@ const AddBookModal: React.FC<{ onClose: () => void; onSuccess: () => void }> = (
       return;
     }
     setIsGenerating(true);
+    setFormData(prev => ({ ...prev, resume_ia: '' }));
+
     try {
-      const response = await api.post('/ai/generate-summary', { 
-        title: formData.title,
-        author: formData.author
-      });
-      setFormData({ ...formData, resume_ia: response.data.summary });
+  const token = localStorage.getItem('token');
+  const response = await fetch(
+    'http://localhost:8000/api/ai/generate-summary/stream',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ title: formData.title, author: formData.author })
+    }
+  );
+
+      if (!response.ok) throw new Error('Erreur streaming');
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let summary = '';
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          summary += chunk;
+          setFormData(prev => ({ ...prev, resume_ia: summary }));
+        }
+      }
     } catch (err) {
       alert("Erreur lors de la génération du résumé.");
     } finally {

@@ -58,8 +58,6 @@ Cela va :
 
 ```bash
 # Redémarrer tous les services
-docker-compose restart
-
 # Ou redémarrer un service spécifique
 docker-compose restart backend
 docker-compose restart frontend
