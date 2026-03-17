@@ -18,7 +18,8 @@ async def list_books(
     available: Optional[bool] = None,
     session: AsyncSession = Depends(get_session)
 ):
-    statement = select(Book)
+    # Only show books that are not "deleted" (quantity_total > 0)
+    statement = select(Book).where(Book.quantity_total > 0)
     
     if search:
         search_filter = or_(
@@ -42,7 +43,7 @@ async def list_books(
 
 @router.get("/{book_id}", response_model=Book)
 async def get_book(book_id: str, session: AsyncSession = Depends(get_session)):
-    statement = select(Book).where(Book.id == book_id)
+    statement = select(Book).where(Book.id == book_id, Book.quantity_total > 0)
     result = await session.execute(statement)
     book = result.scalars().first()
     if not book:
@@ -75,9 +76,15 @@ async def update_book(
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
         
+    old_total = book.quantity_total
     update_data = book_in.dict(exclude_unset=True)
     for key, value in update_data.items():
         setattr(book, key, value)
+        
+    # Adjust available quantity if total quantity changed
+    if "quantity_total" in update_data:
+        diff = book.quantity_total - old_total
+        book.quantity_available = max(0, book.quantity_available + diff)
         
     session.add(book)
     await session.commit()
