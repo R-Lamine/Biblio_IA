@@ -93,6 +93,26 @@ const AddBookModal: React.FC<{ onClose: () => void; onSuccess: () => void }> = (
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSuggestingCategory, setIsSuggestingCategory] = useState(false);
+
+  const suggestCategory = async () => {
+    if (!formData.title || !formData.author) {
+      alert("Veuillez remplir le titre et l'auteur d'abord.");
+      return;
+    }
+    setIsSuggestingCategory(true);
+    try {
+      const response = await api.post('/ai-tools/suggest-category', { 
+        title: formData.title,
+        author: formData.author
+      });
+      setFormData(prev => ({ ...prev, category: response.data.category }));
+    } catch (err) {
+      alert("Erreur lors de la suggestion de catégorie.");
+    } finally {
+      setIsSuggestingCategory(false);
+    }
+  };
 
   const generateSummary = async () => {
     if (!formData.title || !formData.author) {
@@ -196,9 +216,20 @@ const AddBookModal: React.FC<{ onClose: () => void; onSuccess: () => void }> = (
 
           <div className="grid grid-cols-2 gap-4">
             <input className="w-full px-4 py-3 bg-slate-50 border rounded-xl" placeholder="ISBN" value={formData.isbn} onChange={e => setFormData({...formData, isbn: e.target.value})} />
-            <select className="w-full px-4 py-3 bg-slate-50 border rounded-xl" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
-              {Object.keys(CATEGORY_COLORS).map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+            <div className="relative flex gap-1">
+              <select className="flex-1 px-4 py-3 bg-slate-50 border rounded-xl text-sm appearance-none" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
+                {Object.keys(CATEGORY_COLORS).map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <button 
+                type="button"
+                onClick={suggestCategory}
+                disabled={isSuggestingCategory}
+                className="px-3 bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-all flex items-center justify-center shrink-0"
+                title="Suggérer une catégorie via IA"
+              >
+                {isSuggestingCategory ? <Loader2 className="animate-spin" size={16} /> : <Bot size={16} />}
+              </button>
+            </div>
           </div>
           <button disabled={isSubmitting} className="w-full py-4 bg-primary text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-2">
             {isSubmitting ? <Loader2 className="animate-spin" /> : "Confirmer l'ajout"}
