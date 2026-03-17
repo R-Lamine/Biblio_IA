@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutGrid, List, Book as BookIcon, Bot, MapPin, Loader2, LogIn, X } from 'lucide-react';
+import { LayoutGrid, List, Book as BookIcon, Bot, MapPin, Loader2, LogIn, X, Pencil, Trash2 } from 'lucide-react';
 import Navbar from '../components/Navbar/Navbar';
 import api from '../api';
 import { Book } from '../types';
@@ -86,10 +86,17 @@ const BookDetailModal: React.FC<{ book: Book; onClose: () => void; onBorrow: () 
   );
 };
 
-const AddBookModal: React.FC<{ onClose: () => void; onSuccess: () => void }> = ({ onClose, onSuccess }) => {
+const BookFormModal: React.FC<{ book?: Book; onClose: () => void; onSuccess: () => void }> = ({ book, onClose, onSuccess }) => {
   const [formData, setFormData] = useState({
-    title: '', author: '', isbn: '', publication_year: 2024, category: 'Classique', 
-    shelf_row: 'R. 1', shelf_number: 'A', quantity_total: 1, resume_ia: ''
+    title: book?.title || '', 
+    author: book?.author || '', 
+    isbn: book?.isbn || '', 
+    publication_year: book?.publication_year || 2024, 
+    category: book?.category || 'Classique', 
+    shelf_row: book?.shelf_row || 'R. 1', 
+    shelf_number: book?.shelf_number || 'A', 
+    quantity_total: book?.quantity_total || 1, 
+    resume_ia: book?.resume_ia || ''
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -163,16 +170,21 @@ const AddBookModal: React.FC<{ onClose: () => void; onSuccess: () => void }> = (
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      // Clean data: replace empty strings with null for optional fields like ISBN
       const submissionData = {
         ...formData,
         isbn: formData.isbn.trim() || null
       };
-      await api.post('/books/', submissionData);
+      
+      if (book) {
+        await api.put(`/books/${book.id}`, submissionData);
+      } else {
+        await api.post('/books/', submissionData);
+      }
+      
       onSuccess();
       onClose();
     } catch (err) {
-      alert("Erreur lors de l'ajout. Vérifiez les données.");
+      alert("Erreur lors de l'enregistrement. Vérifiez les données.");
     } finally {
       setIsSubmitting(false);
     }
@@ -180,16 +192,23 @@ const AddBookModal: React.FC<{ onClose: () => void; onSuccess: () => void }> = (
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-navy/60 backdrop-blur-sm">
-      <div className="bg-white w-full max-w-md rounded-3xl p-8 shadow-2xl animate-in fade-in zoom-in duration-200">
+      <div className="bg-white w-full max-w-md rounded-3xl p-8 shadow-2xl animate-in fade-in zoom-in duration-200 overflow-y-auto max-h-[90vh]">
         <h2 className="text-2xl font-black text-slate-900 mb-6 flex items-center gap-2">
-          <BookIcon className="text-primary" /> Ajouter un ouvrage
+          <BookIcon className="text-primary" /> {book ? 'Modifier l\'ouvrage' : 'Ajouter un ouvrage'}
         </h2>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <input required className="w-full px-4 py-3 bg-slate-50 border rounded-xl" placeholder="Titre" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
-          <input required className="w-full px-4 py-3 bg-slate-50 border rounded-xl" placeholder="Auteur" value={formData.author} onChange={e => setFormData({...formData, author: e.target.value})} />
+          <div>
+            <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Titre</label>
+            <input required className="w-full px-4 py-3 bg-slate-50 border rounded-xl" placeholder="Titre" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
+          </div>
+          <div>
+            <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Auteur</label>
+            <input required className="w-full px-4 py-3 bg-slate-50 border rounded-xl" placeholder="Auteur" value={formData.author} onChange={e => setFormData({...formData, author: e.target.value})} />
+          </div>
           
           <div className="flex gap-2">
             <div className="flex-1 relative">
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Résumé</label>
               <textarea 
                 className={`w-full px-4 py-3 bg-slate-50 border rounded-xl text-sm h-32 resize-none transition-all ${isGenerating ? 'border-primary ring-2 ring-primary/10' : ''}`}
                 placeholder="Résumé IA (généré ou manuel)" 
@@ -203,36 +222,67 @@ const AddBookModal: React.FC<{ onClose: () => void; onSuccess: () => void }> = (
                 </div>
               )}
             </div>
-            <button 
-              type="button"
-              onClick={generateSummary}
-              disabled={isGenerating}
-              className="px-4 bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-all flex flex-col items-center justify-center gap-1 shrink-0 h-32"
-            >
-              {isGenerating ? <Loader2 className="animate-spin" size={20} /> : <Bot size={20} />}
-              <span className="text-[8px] font-bold uppercase">{isGenerating ? 'En cours' : 'Générer'}</span>
-            </button>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <input className="w-full px-4 py-3 bg-slate-50 border rounded-xl" placeholder="ISBN" value={formData.isbn} onChange={e => setFormData({...formData, isbn: e.target.value})} />
-            <div className="relative flex gap-1">
-              <select className="flex-1 px-4 py-3 bg-slate-50 border rounded-xl text-sm appearance-none" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
-                {Object.keys(CATEGORY_COLORS).map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+            <div className="flex flex-col gap-2 pt-5">
               <button 
                 type="button"
-                onClick={suggestCategory}
-                disabled={isSuggestingCategory}
-                className="px-3 bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-all flex items-center justify-center shrink-0"
-                title="Suggérer une catégorie via IA"
+                onClick={generateSummary}
+                disabled={isGenerating}
+                className="px-4 bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-all flex flex-col items-center justify-center gap-1 shrink-0 h-32"
               >
-                {isSuggestingCategory ? <Loader2 className="animate-spin" size={16} /> : <Bot size={16} />}
+                {isGenerating ? <Loader2 className="animate-spin" size={20} /> : <Bot size={20} />}
+                <span className="text-[8px] font-bold uppercase">{isGenerating ? 'En cours' : 'Générer'}</span>
               </button>
             </div>
           </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">ISBN</label>
+              <input className="w-full px-4 py-3 bg-slate-50 border rounded-xl" placeholder="ISBN" value={formData.isbn} onChange={e => setFormData({...formData, isbn: e.target.value})} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Catégorie</label>
+              <div className="relative flex gap-1">
+                <select className="flex-1 px-4 py-3 bg-slate-50 border rounded-xl text-sm appearance-none" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
+                  {Object.keys(CATEGORY_COLORS).map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <button 
+                  type="button"
+                  onClick={suggestCategory}
+                  disabled={isSuggestingCategory}
+                  className="px-3 bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-all flex items-center justify-center shrink-0"
+                  title="Suggérer une catégorie via IA"
+                >
+                  {isSuggestingCategory ? <Loader2 className="animate-spin" size={16} /> : <Bot size={16} />}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Année</label>
+              <input type="number" className="w-full px-4 py-3 bg-slate-50 border rounded-xl" placeholder="Année" value={formData.publication_year} onChange={e => setFormData({...formData, publication_year: parseInt(e.target.value)})} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Quantité Totale</label>
+              <input type="number" min="0" className="w-full px-4 py-3 bg-slate-50 border rounded-xl" placeholder="Quantité" value={formData.quantity_total} onChange={e => setFormData({...formData, quantity_total: parseInt(e.target.value)})} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Rangée</label>
+              <input className="w-full px-4 py-3 bg-slate-50 border rounded-xl" placeholder="Ex: R. 1" value={formData.shelf_row} onChange={e => setFormData({...formData, shelf_row: e.target.value})} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Numéro Étagère</label>
+              <input className="w-full px-4 py-3 bg-slate-50 border rounded-xl" placeholder="Ex: A" value={formData.shelf_number} onChange={e => setFormData({...formData, shelf_number: e.target.value})} />
+            </div>
+          </div>
+
           <button disabled={isSubmitting} className="w-full py-4 bg-primary text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-2">
-            {isSubmitting ? <Loader2 className="animate-spin" /> : "Confirmer l'ajout"}
+            {isSubmitting ? <Loader2 className="animate-spin" /> : (book ? "Enregistrer les modifications" : "Confirmer l'ajout")}
           </button>
           <button type="button" onClick={onClose} className="w-full py-3 text-slate-400 font-bold">Annuler</button>
         </form>
@@ -246,7 +296,8 @@ const CatalogPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [isLoading, setIsLoading] = useState(true);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isFormModalOpen, setIsFormModalOpen] = useState(false);
+  const [bookToEdit, setBookToEdit] = useState<Book | undefined>(undefined);
   const [selectedCategory, setSelectedCategory] = useState<string>('Toutes');
 
   const { isAuthenticated, user } = useAuthStore();
@@ -276,12 +327,32 @@ const CatalogPage: React.FC = () => {
     }
     try {
       await api.post(`/loans/?book_id=${bookId}`);
-      // Refresh list
       fetchBooks();
       alert('Livre emprunté avec succès !');
     } catch (err: any) {
       alert(err.response?.data?.detail || 'Erreur lors de l\'emprunt');
     }
+  };
+
+  const handleDelete = async (bookId: string) => {
+    if (window.confirm('Êtes-vous sûr de vouloir supprimer ce livre ?')) {
+      try {
+        await api.delete(`/books/${bookId}`);
+        setBooks(prev => prev.filter(b => b.id !== bookId));
+      } catch (err) {
+        alert("Erreur lors de la suppression.");
+      }
+    }
+  };
+
+  const openAddModal = () => {
+    setBookToEdit(undefined);
+    setIsFormModalOpen(true);
+  };
+
+  const openEditModal = (book: Book) => {
+    setBookToEdit(book);
+    setIsFormModalOpen(true);
   };
 
   return (
@@ -314,7 +385,7 @@ const CatalogPage: React.FC = () => {
           <div className="flex items-center gap-4">
             {user?.role === 'bibliothecaire' && (
               <button 
-                onClick={() => setIsAddModalOpen(true)}
+                onClick={openAddModal}
                 className="px-6 py-2.5 bg-slate-900 text-white font-bold rounded-xl shadow-lg hover:bg-slate-800 transition-all flex items-center gap-2"
               >
                 <BookIcon size={20} /> Ajouter un ouvrage
@@ -355,8 +426,11 @@ const CatalogPage: React.FC = () => {
                   <BookCard 
                     key={book.id} 
                     book={book} 
+                    userRole={user?.role}
                     onBorrow={() => handleBorrow(book.id)} 
                     onViewDetails={() => setSelectedBook(book)}
+                    onEdit={() => openEditModal(book)}
+                    onDelete={() => handleDelete(book.id)}
                   />
                 ))}
               </div>
@@ -394,18 +468,38 @@ const CatalogPage: React.FC = () => {
                             <span className="text-red-500 text-xs font-bold">Emprunté</span>
                           )}
                         </td>
-                        <td className="px-6 py-4 text-right">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleBorrow(book.id); }}
-                            disabled={book.quantity_available === 0}
-                            className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-all ${
-                              book.quantity_available > 0 
-                                ? 'bg-primary/10 text-primary hover:bg-primary hover:text-white' 
-                                : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                            }`}
-                          >
-                            Emprunter
-                          </button>
+                        <td className="px-6 py-4 text-right" onClick={e => e.stopPropagation()}>
+                          <div className="flex items-center justify-end gap-2">
+                            {user?.role === 'bibliothecaire' && (
+                              <>
+                                <button
+                                  onClick={() => openEditModal(book)}
+                                  className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                                  title="Modifier"
+                                >
+                                  <Pencil size={18} />
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(book.id)}
+                                  className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                                  title="Supprimer"
+                                >
+                                  <Trash2 size={18} />
+                                </button>
+                              </>
+                            )}
+                            <button
+                              onClick={() => handleBorrow(book.id)}
+                              disabled={book.quantity_available === 0}
+                              className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-all ${
+                                book.quantity_available > 0 
+                                  ? 'bg-primary/10 text-primary hover:bg-primary hover:text-white' 
+                                  : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                              }`}
+                            >
+                              Emprunter
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -424,9 +518,10 @@ const CatalogPage: React.FC = () => {
           />
         )}
 
-        {isAddModalOpen && (
-          <AddBookModal 
-            onClose={() => setIsAddModalOpen(false)} 
+        {isFormModalOpen && (
+          <BookFormModal 
+            book={bookToEdit}
+            onClose={() => setIsFormModalOpen(false)} 
             onSuccess={fetchBooks} 
           />
         )}
@@ -435,7 +530,14 @@ const CatalogPage: React.FC = () => {
   );
 };
 
-const BookCard: React.FC<{ book: Book; onBorrow: () => void; onViewDetails: () => void }> = ({ book, onBorrow, onViewDetails }) => {
+const BookCard: React.FC<{ 
+  book: Book; 
+  userRole?: string;
+  onBorrow: () => void; 
+  onViewDetails: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}> = ({ book, userRole, onBorrow, onViewDetails, onEdit, onDelete }) => {
   const gradient = CATEGORY_COLORS[book.category || ''] || 'from-slate-400 to-slate-500';
   
   return (
@@ -449,13 +551,32 @@ const BookCard: React.FC<{ book: Book; onBorrow: () => void; onViewDetails: () =
         <span className="absolute top-3 right-3 bg-white/20 backdrop-blur-md text-[10px] font-black px-2.5 py-1 rounded-lg text-white uppercase tracking-wider border border-white/30">
           {book.category}
         </span>
+        
+        {userRole === 'bibliothecaire' && (
+          <div className="absolute top-3 left-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              onClick={(e) => { e.stopPropagation(); onEdit(); }}
+              className="p-2 bg-white/90 backdrop-blur-sm text-blue-600 rounded-lg shadow-sm hover:bg-white transition-all"
+              title="Modifier"
+            >
+              <Pencil size={16} />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              className="p-2 bg-white/90 backdrop-blur-sm text-red-600 rounded-lg shadow-sm hover:bg-white transition-all"
+              title="Supprimer"
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
+        )}
       </div>
       
       <div className="p-5 flex-1 flex flex-col">
         <h3 className="font-bold text-slate-900 text-lg leading-tight mb-1 line-clamp-2 cursor-pointer" onClick={onViewDetails}>{book.title}</h3>
         <p className="text-sm text-slate-500 mb-4 font-medium">Par {book.author}</p>
         
-        <div className="bg-indigo-50 border border-indigo-100/50 rounded-xl p-3 mb-6 relative cursor-pointer" onClick={onViewDetails}>
+        <div className="bg-indigo-50 border border-indigo-100/50 rounded-xl p-3 mb-6 relative cursor-pointer flex-1" onClick={onViewDetails}>
           <div className="flex items-center gap-2 text-primary font-black text-[10px] uppercase tracking-tighter mb-1.5">
             <Bot size={14} className="animate-bounce" />
             Résumé IA
@@ -465,7 +586,7 @@ const BookCard: React.FC<{ book: Book; onBorrow: () => void; onViewDetails: () =
           </p>
         </div>
 
-        <div className="mt-auto flex items-center justify-between pt-4 border-t border-slate-100">
+        <div className="mt-4 flex items-center justify-between pt-4 border-t border-slate-100">
           <button
             onClick={onViewDetails}
             className="text-xs font-bold text-slate-400 hover:text-primary transition-colors"
