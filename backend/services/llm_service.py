@@ -214,30 +214,24 @@ class LLMService:
 
     async def generate_book_summary(self, title: str, author: str) -> str:
         """
-        Génère un résumé via Qwen2.5 en streaming interne,
-        retourne le texte complet une fois fini.
+        Génère un résumé complet de 8 à 10 lignes via Qwen2.5.
         """
         prompt = build_prompt(
             system=(
                 "Tu es un bibliothécaire expert. "
                 "Quand on te donne un titre et un auteur, tu réponds UNIQUEMENT par un résumé "
-                "de 2 à 3 phrases en français, sans mentionner le titre ni l'auteur dans ta réponse. "
-                "Pas d'introduction, pas de conclusion, juste le résumé."
+                "complet et détaillé d'environ 8 à 10 lignes en français, sans mentionner le titre ni l'auteur dans ta réponse. "
+                "Rédige un texte fluide, sans introduction ni conclusion, juste le contenu du livre. "
+                "Assure-toi de terminer ta dernière phrase correctement."
             ),
-            user=f"Résume ce livre : \"{title}\" de {author}."
+            user=f"Résume de manière détaillée ce livre : \"{title}\" de {author}."
         )
         try:
-            result = await self._call_ollama(prompt, timeout=60.0, num_predict=120)
-            # Nettoyage : retirer les lignes qui mentionnent le titre ou l'auteur
+            result = await self._call_ollama(prompt, timeout=90.0, num_predict=400)
+            # Nettoyage minimal
             lines = [l for l in result.split('\n') if l.strip()]
-            clean_lines = []
-            for line in lines:
-                line_lower = line.lower()
-                if title.lower()[:8] in line_lower and author.lower()[:5] in line_lower:
-                    continue  # sauter les lignes qui répètent titre+auteur
-                clean_lines.append(line)
-            final = ' '.join(clean_lines).strip()
-            return final if len(final) > 20 else result
+            final = ' '.join(lines).strip()
+            return final
         except httpx.TimeoutException:
             return "Résumé non disponible (délai dépassé). Vous pouvez le saisir manuellement."
         except Exception as e:
@@ -245,64 +239,47 @@ class LLMService:
             return "Résumé non disponible. Vous pouvez le saisir manuellement."
 
     
-async def stream_book_summary(self, title: str, author: str):
-    """Résumé en streaming — s'arrête proprement à la fin d'une phrase."""
-    prompt = build_prompt(
-        system=(
-            "Tu es un bibliothécaire expert. "
-            "Réponds UNIQUEMENT avec un résumé de 3 à 4 phrases complètes en français. "
-            "Ne mentionne pas le titre ni l'auteur. "
-            "Termine toujours sur une phrase complète."
-        ),
-        user=f"Résume ce livre : \"{title}\" de {author}."
-    )
-    payload = {
-        "model": self.model,
-        "prompt": prompt,
-        "stream": True,
-        "options": {
-            "num_predict": 200,
-            "temperature": 0.6,
-            "top_p": 0.9,
-            "stop": ["<|im_end|>"]
+    async def stream_book_summary(self, title: str, author: str):
+        """Résumé détaillé en streaming — 8 à 10 lignes."""
+        prompt = build_prompt(
+            system=(
+                "Tu es un bibliothécaire expert. "
+                "Réponds UNIQUEMENT avec un résumé détaillé d'environ 8 à 10 lignes en français. "
+                "Ne mentionne pas le titre ni l'auteur. "
+                "Rédige un texte complet et fluide. Termine impérativement ta dernière phrase."
+            ),
+            user=f"Résume de manière détaillée ce livre : \"{title}\" de {author}."
+        )
+        payload = {
+            "model": self.model,
+            "prompt": prompt,
+            "stream": True,
+            "options": {
+                "num_predict": 400,
+                "temperature": 0.7,
+                "top_p": 0.9,
+                "stop": ["<|im_end|>"]
+            }
         }
-    }
 
-    sentence_count = 0
-    buffer = ""
-    last_was_punctuation = False
+        try:
+            async with httpx.AsyncClient(timeout=180.0) as client:
+                async with client.stream("POST", self.ollama_url, json=payload) as response:
+                    async for line in response.aiter_lines():
+                        if not line:
+                            continue
+                        data = json.loads(line)
+                        token = data.get("response", "")
 
-    try:
-        async with httpx.AsyncClient(timeout=180.0) as client:
-            async with client.stream("POST", self.ollama_url, json=payload) as response:
-                async for line in response.aiter_lines():
-                    if not line:
-                        continue
-                    data = json.loads(line)
-                    token = data.get("response", "")
+                        if token:
+                            yield token
 
-                    if token:
-                        buffer += token
-                        yield token
-
-                        # Compter les phrases complètes
-                        for char in token:
-                            if char in (".", "!", "?"):
-                                sentence_count += 1
-                                last_was_punctuation = True
-                            else:
-                                last_was_punctuation = False
-
-                        # Arrêter après 4 phrases, mais seulement à la fin d'une phrase
-                        if sentence_count >= 4 and last_was_punctuation:
+                        if data.get("done"):
                             break
 
-                    if data.get("done"):
-                        break
-
-    except Exception as e:
-        logger.error(f"Stream summary error: {e}")
-        yield " (génération interrompue)"
+        except Exception as e:
+            logger.error(f"Stream summary error: {e}")
+            yield " (génération interrompue)"
 
     async def natural_language_search(self, user_query: str, catalog: List[dict]) -> List[str]:
         matching_books, search_type = search_books_in_catalog(user_query, catalog, max_results=20)
