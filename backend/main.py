@@ -6,7 +6,7 @@ import httpx
 
 from backend.core.config import settings
 from backend.core.database import init_db
-from backend.routers import auth, books, loans, reservations, members, ai, analysis, notifications, analysis_ai
+from backend.routers import auth, books, loans, reservations, members, ai, analysis, notifications, analysis_ai, category_ai
 from backend.tasks.overdue_checker import check_overdue_loans
 from backend.seed.seed_data import seed
 from backend.models import user as _user_model, book as _book_model, loan as _loan_model, reservation as _reservation_model, ai_analysis as _ai_analysis_model
@@ -97,6 +97,7 @@ app.include_router(ai.router, prefix="/api")
 app.include_router(analysis.router, prefix="/api")
 app.include_router(notifications.router, prefix="/api")
 app.include_router(analysis_ai.router, prefix="/api")
+app.include_router(category_ai.router, prefix="/api")
 
 @app.get("/api/health")
 async def health_check():

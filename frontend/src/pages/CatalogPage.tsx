@@ -93,6 +93,26 @@ const AddBookModal: React.FC<{ onClose: () => void; onSuccess: () => void }> = (
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSuggestingCategory, setIsSuggestingCategory] = useState(false);
+
+  const suggestCategory = async () => {
+    if (!formData.title || !formData.author) {
+      alert("Veuillez remplir le titre et l'auteur d'abord.");
+      return;
+    }
+    setIsSuggestingCategory(true);
+    try {
+      const response = await api.post('/ai-tools/suggest-category', { 
+        title: formData.title,
+        author: formData.author
+      });
+      setFormData(prev => ({ ...prev, category: response.data.category }));
+    } catch (err) {
+      alert("Erreur lors de la suggestion de catégorie.");
+    } finally {
+      setIsSuggestingCategory(false);
+    }
+  };
 
   const generateSummary = async () => {
     if (!formData.title || !formData.author) {
@@ -103,18 +123,18 @@ const AddBookModal: React.FC<{ onClose: () => void; onSuccess: () => void }> = (
     setFormData(prev => ({ ...prev, resume_ia: '' }));
 
     try {
-  const token = localStorage.getItem('token');
-  const response = await fetch(
-    'http://localhost:8000/api/ai/generate-summary/stream',
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({ title: formData.title, author: formData.author })
-    }
-  );
+      const token = localStorage.getItem('token');
+      const response = await fetch(
+        '/api/ai/generate-summary/stream',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ title: formData.title, author: formData.author })
+        }
+      );
 
       if (!response.ok) throw new Error('Erreur streaming');
 
@@ -132,6 +152,7 @@ const AddBookModal: React.FC<{ onClose: () => void; onSuccess: () => void }> = (
         }
       }
     } catch (err) {
+      console.error(err);
       alert("Erreur lors de la génération du résumé.");
     } finally {
       setIsGenerating(false);
@@ -168,28 +189,47 @@ const AddBookModal: React.FC<{ onClose: () => void; onSuccess: () => void }> = (
           <input required className="w-full px-4 py-3 bg-slate-50 border rounded-xl" placeholder="Auteur" value={formData.author} onChange={e => setFormData({...formData, author: e.target.value})} />
           
           <div className="flex gap-2">
-            <textarea 
-              className="flex-1 px-4 py-3 bg-slate-50 border rounded-xl text-sm h-24 resize-none" 
-              placeholder="Résumé IA (généré ou manuel)" 
-              value={formData.resume_ia} 
-              onChange={e => setFormData({...formData, resume_ia: e.target.value})}
-            />
+            <div className="flex-1 relative">
+              <textarea 
+                className={`w-full px-4 py-3 bg-slate-50 border rounded-xl text-sm h-32 resize-none transition-all ${isGenerating ? 'border-primary ring-2 ring-primary/10' : ''}`}
+                placeholder="Résumé IA (généré ou manuel)" 
+                value={formData.resume_ia + (isGenerating ? ' |' : '')} 
+                readOnly={isGenerating}
+                onChange={e => setFormData({...formData, resume_ia: e.target.value})}
+              />
+              {isGenerating && (
+                <div className="absolute bottom-3 right-3">
+                  <Loader2 className="animate-spin text-primary" size={16} />
+                </div>
+              )}
+            </div>
             <button 
               type="button"
               onClick={generateSummary}
               disabled={isGenerating}
-              className="px-4 bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-all flex flex-col items-center justify-center gap-1"
+              className="px-4 bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-all flex flex-col items-center justify-center gap-1 shrink-0 h-32"
             >
               {isGenerating ? <Loader2 className="animate-spin" size={20} /> : <Bot size={20} />}
-              <span className="text-[8px] font-bold uppercase">Générer</span>
+              <span className="text-[8px] font-bold uppercase">{isGenerating ? 'En cours' : 'Générer'}</span>
             </button>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <input className="w-full px-4 py-3 bg-slate-50 border rounded-xl" placeholder="ISBN" value={formData.isbn} onChange={e => setFormData({...formData, isbn: e.target.value})} />
-            <select className="w-full px-4 py-3 bg-slate-50 border rounded-xl" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
-              {Object.keys(CATEGORY_COLORS).map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+            <div className="relative flex gap-1">
+              <select className="flex-1 px-4 py-3 bg-slate-50 border rounded-xl text-sm appearance-none" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
+                {Object.keys(CATEGORY_COLORS).map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <button 
+                type="button"
+                onClick={suggestCategory}
+                disabled={isSuggestingCategory}
+                className="px-3 bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-all flex items-center justify-center shrink-0"
+                title="Suggérer une catégorie via IA"
+              >
+                {isSuggestingCategory ? <Loader2 className="animate-spin" size={16} /> : <Bot size={16} />}
+              </button>
+            </div>
           </div>
           <button disabled={isSubmitting} className="w-full py-4 bg-primary text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-2">
             {isSubmitting ? <Loader2 className="animate-spin" /> : "Confirmer l'ajout"}
