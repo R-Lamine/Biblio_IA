@@ -285,7 +285,7 @@ const CatalogPage: React.FC = () => {
                 <p className="text-slate-500 italic">Aucun livre trouvé dans cette catégorie.</p>
               </div>
             ) : viewMode === 'grid' ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {books.map((book) => (
                   <BookCard 
                     key={book.id} 
@@ -296,8 +296,8 @@ const CatalogPage: React.FC = () => {
                 ))}
               </div>
             ) : (
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                <table className="w-full text-left border-collapse">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-[800px]">
                   <thead className="bg-slate-50 border-b border-slate-200">
                     <tr>
                       <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">ISBN</th>
