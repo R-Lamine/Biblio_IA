@@ -264,7 +264,7 @@ const AnalysisPage: React.FC = () => {
               <span className="text-sm font-medium">Résultats pour les {results.period_months} derniers mois</span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
               <KpiCard title="Total Livres" value={results.total_books} icon={<BookOpen size={20} />} color="text-blue-600" bgColor="bg-blue-50" />
               <KpiCard title="Emprunts (période)" value={results.total_loans_in_period} icon={<TrendingUp size={20} />} color="text-indigo-600" bgColor="bg-indigo-50" />
               <KpiCard title="Moy. Emprunts / Livre" value={results.average_borrows} icon={<BarChart3 size={20} />} color="text-emerald-600" bgColor="bg-emerald-50" />
@@ -386,7 +386,7 @@ const AnalysisSection: React.FC<{ title: string, icon: React.ReactNode, data: an
       <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">{icon}{title}</h3>
     </div>
     <div className="overflow-x-auto">
-      <table className="w-full text-left">
+      <table className="w-full text-left min-w-[500px]">
         <thead className="bg-slate-50">
           <tr>
             <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">Titre</th>

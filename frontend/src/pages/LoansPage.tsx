@@ -75,8 +75,8 @@ const LoansPage: React.FC = () => {
             <p className="text-slate-500 font-medium italic">Chargement des emprunts...</p>
           </div>
         ) : (
-          <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-            <table className="w-full text-left border-collapse">
+          <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[800px]">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Livre ID</th>
