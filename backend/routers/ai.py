@@ -16,18 +16,45 @@ from backend.services.queue_service import queue_service
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
+
 @router.post("/chat/stream")
 async def chat_stream(
     request: ChatRequest,
+    session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     history = [{"role": m.role, "content": m.content} for m in (request.history or [])]
-    
+
+    result = await session.execute(select(Book))
+    books = result.scalars().all()
+    catalog = [
+        {"id": b.id, "title": b.title, "author": b.author,
+         "category": b.category, "resume_ia": b.resume_ia}
+        for b in books
+    ]
+
     async def generate():
-        async for chunk in llm_service.stream_chat(request.message, history):
+        async for chunk in llm_service.stream_chat(request.message, history, catalog=catalog):
             yield chunk
 
     return StreamingResponse(generate(), media_type="text/plain")
+
+
+@router.post("/generate-summary/stream")
+async def generate_summary_stream(
+    request: BookSummaryRequest,
+    current_user: User = Depends(require_role("bibliothecaire"))
+):
+    """
+    Génère un résumé en streaming mot par mot.
+    Bypasse la queue pour permettre le vrai streaming temps réel.
+    """
+    async def generate():
+        async for token in llm_service.stream_book_summary(request.title, request.author):
+            yield token
+
+    return StreamingResponse(generate(), media_type="text/plain")
+
 
 @router.post("/generate-summary", response_model=SummaryResponse)
 async def generate_pre_summary(
@@ -46,6 +73,7 @@ async def generate_pre_summary(
     except Exception as e:
         raise HTTPException(status_code=500, detail="Service IA indisponible")
 
+
 @router.post("/summary/{book_id}", response_model=SummaryResponse)
 async def generate_summary(
     book_id: str,
@@ -55,34 +83,32 @@ async def generate_summary(
     statement = select(Book).where(Book.id == book_id)
     result = await session.execute(statement)
     book = result.scalars().first()
-    
+
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
-        
+
     try:
         summary = await queue_service.enqueue_llm_task(
             llm_service.generate_book_summary,
             book.title,
             book.author
         )
-        
         book.resume_ia = summary
         session.add(book)
-        
-        # Log analysis
+
         analysis = AIAnalysis(
             analysis_type="book_summary",
             input_data={"book_id": book.id, "title": book.title},
             output_data={"summary": summary}
         )
         session.add(analysis)
-        
         await session.commit()
         return {"summary": summary}
     except TimeoutError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail="Service IA indisponible")
+
 
 @router.post("/search")
 async def ai_search(
@@ -93,27 +119,27 @@ async def ai_search(
     statement = select(Book)
     result = await session.execute(statement)
     books = result.scalars().all()
-    
+
     catalog = [
-        {"id": b.id, "title": b.title, "author": b.author, "category": b.category, "resume_ia": b.resume_ia}
+        {"id": b.id, "title": b.title, "author": b.author,
+         "category": b.category, "resume_ia": b.resume_ia}
         for b in books
     ]
-    
+
     try:
         book_ids = await queue_service.enqueue_llm_task(
             llm_service.natural_language_search,
             query.query,
             catalog
         )
-        
+
         results = []
         for bid in book_ids:
             for b in books:
                 if b.id == bid:
                     results.append(b)
                     break
-                    
-        # Log analysis
+
         analysis = AIAnalysis(
             analysis_type="natural_search",
             input_data={"query": query.query},
@@ -121,12 +147,13 @@ async def ai_search(
         )
         session.add(analysis)
         await session.commit()
-        
+
         return results
     except TimeoutError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail="Service IA indisponible")
+
 
 @router.get("/stock-analysis", response_model=StockAnalysisResponse)
 async def stock_analysis(
@@ -135,47 +162,45 @@ async def stock_analysis(
 ):
     try:
         six_months_ago = datetime.utcnow() - timedelta(days=180)
-        
-        # Count loans per book in last 6 months
+
         stmt = select(Loan.book_id, func.count(Loan.id).label("loan_count")) \
             .where(Loan.loan_date >= six_months_ago) \
             .group_by(Loan.book_id)
         result = await session.execute(stmt)
         loan_counts = {row.book_id: row.loan_count for row in result.all()}
-        
-        # Get all books
+
         books_stmt = select(Book)
         books_result = await session.execute(books_stmt)
         books = books_result.scalars().all()
-        
+
         high_rotation = []
         dormant_books = []
-        
         twelve_months_ago = datetime.utcnow() - timedelta(days=365)
-        
+
         for book in books:
-            # Check rotation
             count = loan_counts.get(book.id, 0)
             if book.quantity_total > 0:
                 rotation_rate = count / book.quantity_total
                 if rotation_rate > 0.9:
                     high_rotation.append({"title": book.title, "rotation_rate": round(rotation_rate, 2)})
-            
-            # Check dormant
-            dormant_stmt = select(func.count(Loan.id)).where(Loan.book_id == book.id, Loan.loan_date >= twelve_months_ago)
+
+            dormant_stmt = select(func.count(Loan.id)).where(
+                Loan.book_id == book.id,
+                Loan.loan_date >= twelve_months_ago
+            )
             dormant_res = await session.execute(dormant_stmt)
             if dormant_res.scalar() == 0:
                 dormant_books.append(book.title)
-                
+
         stats = {
             "period": "6 derniers mois",
             "total_loans_6_months": sum(loan_counts.values()),
             "high_rotation_books": high_rotation,
             "dormant_books": dormant_books
         }
-        
+
         analysis_text = await queue_service.enqueue_llm_task(llm_service.analyze_stock, stats)
-        
+
         analysis = AIAnalysis(
             analysis_type="stock_analysis",
             input_data=stats,
@@ -183,12 +208,13 @@ async def stock_analysis(
         )
         session.add(analysis)
         await session.commit()
-        
+
         return {"analysis": analysis_text, "generated_at": datetime.utcnow()}
     except TimeoutError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail="Service IA indisponible")
+
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(

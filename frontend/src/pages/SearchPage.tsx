@@ -107,9 +107,9 @@ const SearchPage: React.FC = () => {
   const navigate = useNavigate();
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatHistory]);
+ // useEffect(() => {
+  //  chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+ // }, [chatHistory]);
 
   const handleClassicSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -260,8 +260,8 @@ const SearchPage: React.FC = () => {
         </div>
 
         {/* AI Chat Section */}
-        <section className="bg-white border-2 border-primary/20 rounded-3xl overflow-hidden shadow-xl shadow-primary/5 flex flex-col h-[500px]">
-          <div className="bg-primary/5 p-4 border-b border-primary/10 flex items-center justify-between">
+        <section className="bg-white border-2 border-primary/20 rounded-3xl overflow-hidden shadow-xl shadow-primary/5 flex flex-col h-[500px] md:h-[600px]">
+          <div className="bg-primary/5 p-4 border-b border-primary/10 flex items-center justify-between sticky top-0 z-10">
             <div className="flex items-center gap-2">
               <div className="bg-primary p-1.5 rounded-lg text-white">
                 <Bot size={20} />
@@ -271,10 +271,10 @@ const SearchPage: React.FC = () => {
             <Sparkles className="text-primary/40 animate-pulse" size={18} />
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50/50">
+          <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-slate-50/50">
             {chatHistory.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[80%] p-4 rounded-2xl ${
+                <div className={`max-w-[85%] md:max-w-[80%] p-3 md:p-4 rounded-2xl ${
                   msg.role === 'user' 
                     ? 'bg-primary text-white rounded-tr-none' 
                     : 'bg-white border border-slate-100 text-slate-700 rounded-tl-none shadow-sm'
@@ -293,7 +293,7 @@ const SearchPage: React.FC = () => {
             <div ref={chatEndRef} />
           </div>
 
-          <div className="p-4 bg-white border-t border-slate-100">
+          <div className="p-4 bg-white border-t border-slate-100 sticky bottom-0">
             <form onSubmit={handleSendMessage} className="flex gap-2 mb-3">
               <input
                 type="text"
@@ -315,15 +315,15 @@ const SearchPage: React.FC = () => {
               disabled={isAiSearchLoading || chatHistory.length < 2}
               className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl flex items-center justify-center gap-2 text-sm transition-all"
             >
-              {isAiSearchLoading ? <Loader2 className="animate-spin" size={16} /> : <><Search size={16} /> Lancer la recherche basée sur notre discussion</>}
+              {isAiSearchLoading ? <Loader2 className="animate-spin" size={16} /> : <><Search size={16} /> Lancer la recherche</>}
             </button>
           </div>
         </section>
 
         {/* Results Section */}
         {(results.length > 0 || isAiSearchLoading || isLoading) && (
-          <div className="mt-16 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="flex items-center justify-between mb-8 border-b border-slate-200 pb-4">
+          <div className="mt-12 md:mt-16 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 border-b border-slate-200 pb-4 gap-4">
               <h3 className="text-2xl font-bold text-slate-900 flex items-center gap-3">
                 Ouvrages trouvés
                 <span className="bg-slate-100 text-slate-500 text-sm px-3 py-1 rounded-full font-medium">

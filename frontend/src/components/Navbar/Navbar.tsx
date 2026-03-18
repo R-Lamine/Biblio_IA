@@ -1,25 +1,82 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { BookOpen, LogOut, Search, Library, LayoutDashboard, Users, BookMarked, Home } from 'lucide-react';
+import { 
+  BookOpen, 
+  LogOut, 
+  Search, 
+  Library, 
+  LayoutDashboard, 
+  Users, 
+  BookMarked, 
+  Home, 
+  BarChart3, 
+  Bell, 
+  AlertTriangle,
+  Info,
+  AlertCircle,
+  Menu,
+  X
+} from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
+import api from '../../api';
+
+interface StockNotification {
+  book_id: string;
+  title: string;
+  quantity_available: number;
+  level: 'CRITICAL' | 'WARNING';
+}
 
 const Navbar: React.FC = () => {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
+  const [notifications, setNotifications] = useState<StockNotification[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (user?.role === 'bibliothecaire') {
+      fetchNotifications();
+      const interval = setInterval(fetchNotifications, 30000); // Rafraîchir toutes les 30s
+      return () => clearInterval(interval);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowNotifications(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const fetchNotifications = async () => {
+    try {
+      const response = await api.get<StockNotification[]>('/notifications/stock');
+      setNotifications(response.data);
+    } catch (err) {
+      console.error("Error fetching notifications", err);
+    }
+  };
 
   const handleLogout = () => {
     logout();
     navigate('/login');
+    setIsMenuOpen(false);
   };
 
   const isActive = (path: string) => location.pathname === path;
+  const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
 
   return (
     <nav className="bg-white border-b border-slate-200 sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
-          <div className="flex items-center gap-8">
+          <div className="flex items-center gap-4 md:gap-8">
             <Link to="/" className="flex items-center gap-2 group">
               <div className="bg-primary p-1.5 rounded-lg group-hover:rotate-12 transition-transform">
                 <BookOpen className="text-white w-5 h-5" />
@@ -41,14 +98,80 @@ const Navbar: React.FC = () => {
                   <NavLink to="/catalogue" icon={<Library size={18} />} active={isActive('/catalogue')}>Catalogue</NavLink>
                   <NavLink to="/adherents" icon={<Users size={18} />} active={isActive('/adherents')}>Adhérents</NavLink>
                   <NavLink to="/emprunts" icon={<BookMarked size={18} />} active={isActive('/emprunts')}>Emprunts</NavLink>
+                  <NavLink to="/analyse" icon={<BarChart3 size={18} />} active={isActive('/analyse')}>Analyse</NavLink>
                 </>
               )}
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             {user ? (
               <>
+                {user.role === 'bibliothecaire' && (
+                  <div className="relative" ref={dropdownRef}>
+                    <button
+                      onClick={() => setShowNotifications(!showNotifications)}
+                      className="p-2 text-slate-500 hover:text-primary hover:bg-slate-50 rounded-lg transition-all relative"
+                    >
+                      <Bell size={20} />
+                      {notifications.length > 0 && (
+                        <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-red-600 text-white text-[10px] font-bold flex items-center justify-center rounded-full border-2 border-white animate-pulse">
+                          {notifications.length}
+                        </span>
+                      )}
+                    </button>
+
+                    {showNotifications && (
+                      <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden z-50">
+                        <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                          <h3 className="font-bold text-slate-900">Alertes Stock</h3>
+                          <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 bg-white border border-slate-200 rounded-md text-slate-500">
+                            Temps réel
+                          </span>
+                        </div>
+                        <div className="max-h-96 overflow-y-auto">
+                          {notifications.length > 0 ? (
+                            notifications.map((notif) => (
+                              <div key={notif.book_id} className="p-4 border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                                <div className="flex gap-3">
+                                  <div className={`mt-0.5 p-1.5 rounded-lg shrink-0 ${
+                                    notif.level === 'CRITICAL' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'
+                                  }`}>
+                                    {notif.level === 'CRITICAL' ? <AlertCircle size={16} /> : <AlertTriangle size={16} />}
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-bold text-slate-900 line-clamp-1">{notif.title}</p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
+                                        notif.level === 'CRITICAL' 
+                                          ? 'bg-red-50 text-red-700 border-red-100' 
+                                          : 'bg-amber-50 text-amber-700 border-amber-100'
+                                      }`}>
+                                        {notif.level === 'CRITICAL' ? 'CRITIQUE' : 'ATTENTION'}
+                                      </span>
+                                      <span className="text-xs text-slate-500">
+                                        Stock: {notif.quantity_available}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="p-8 text-center">
+                              <div className="w-12 h-12 bg-green-50 text-green-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                                <Info size={24} />
+                              </div>
+                              <p className="text-sm font-medium text-slate-900">Tout est en ordre</p>
+                              <p className="text-xs text-slate-500 mt-1">Aucun livre en rupture de stock.</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="hidden sm:flex flex-col items-end mr-2">
                   <span className="text-sm font-semibold text-slate-900">{user?.username}</span>
                   <span className="text-xs text-slate-500 capitalize">{user?.role}</span>
@@ -56,16 +179,24 @@ const Navbar: React.FC = () => {
                 
                 <button
                   onClick={handleLogout}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                  className="hidden sm:flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
                 >
                   <LogOut size={18} />
-                  <span className="hidden sm:inline">Déconnexion</span>
+                  <span>Déconnexion</span>
+                </button>
+
+                {/* Mobile Menu Button */}
+                <button
+                  onClick={toggleMenu}
+                  className="md:hidden p-2 text-slate-600 hover:bg-slate-50 rounded-lg transition-all"
+                >
+                  {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
                 </button>
               </>
             ) : (
               <Link
                 to="/login"
-                className="flex items-center gap-2 px-6 py-2 bg-primary text-white text-sm font-bold rounded-xl shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
+                className="flex items-center gap-2 px-4 sm:px-6 py-2 bg-primary text-white text-sm font-bold rounded-xl shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all"
               >
                 Connexion
               </Link>
@@ -73,6 +204,61 @@ const Navbar: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Mobile Overlay Menu */}
+      {isMenuOpen && (
+        <div className="md:hidden absolute top-16 left-0 w-full bg-white border-b border-slate-200 shadow-xl z-50 animate-in fade-in slide-in-from-top-4 duration-200">
+          <div className="px-4 py-6 space-y-2">
+            {user && (
+              <div className="flex items-center gap-3 px-4 py-3 mb-4 bg-slate-50 rounded-2xl sm:hidden">
+                <div className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center font-bold">
+                  {user.username.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-slate-900">{user.username}</p>
+                  <p className="text-xs text-slate-500 capitalize">{user.role}</p>
+                </div>
+              </div>
+            )}
+
+            {(!user || user.role === 'adherent') ? (
+              <>
+                {user && <MobileNavLink to="/espace-client" icon={<Home size={20} />} active={isActive('/espace-client')} onClick={() => setIsMenuOpen(false)}>Espace Client</MobileNavLink>}
+                <MobileNavLink to="/recherche" icon={<Search size={20} />} active={isActive('/recherche')} onClick={() => setIsMenuOpen(false)}>Recherche</MobileNavLink>
+                <MobileNavLink to="/catalogue" icon={<Library size={20} />} active={isActive('/catalogue')} onClick={() => setIsMenuOpen(false)}>Catalogue</MobileNavLink>
+                {user && <MobileNavLink to="/mes-lectures" icon={<BookMarked size={20} />} active={isActive('/mes-lectures')} onClick={() => setIsMenuOpen(false)}>Mes Lectures</MobileNavLink>}
+              </>
+            ) : (
+              <>
+                <MobileNavLink to="/dashboard" icon={<LayoutDashboard size={20} />} active={isActive('/dashboard')} onClick={() => setIsMenuOpen(false)}>Dashboard</MobileNavLink>
+                <MobileNavLink to="/catalogue" icon={<Library size={20} />} active={isActive('/catalogue')} onClick={() => setIsMenuOpen(false)}>Catalogue</MobileNavLink>
+                <MobileNavLink to="/adherents" icon={<Users size={20} />} active={isActive('/adherents')} onClick={() => setIsMenuOpen(false)}>Adhérents</MobileNavLink>
+                <MobileNavLink to="/emprunts" icon={<BookMarked size={20} />} active={isActive('/emprunts')} onClick={() => setIsMenuOpen(false)}>Emprunts</MobileNavLink>
+                <MobileNavLink to="/analyse" icon={<BarChart3 size={20} />} active={isActive('/analyse')} onClick={() => setIsMenuOpen(false)}>Analyse</MobileNavLink>
+              </>
+            )}
+
+            {user && (
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center gap-3 px-4 py-3 text-red-600 font-bold rounded-xl hover:bg-red-50 transition-all mt-4 border-t border-slate-100 pt-6"
+              >
+                <LogOut size={20} />
+                <span>Déconnexion</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Backdrop for mobile menu */}
+      {isMenuOpen && (
+        <div 
+          className="md:hidden fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-40" 
+          onClick={() => setIsMenuOpen(false)}
+          style={{ top: '64px' }}
+        />
+      )}
     </nav>
   );
 };
@@ -84,6 +270,21 @@ const NavLink: React.FC<{ to: string; children: React.ReactNode; icon: React.Rea
       active 
         ? 'bg-primary/10 text-primary' 
         : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+    }`}
+  >
+    {icon}
+    {children}
+  </Link>
+);
+
+const MobileNavLink: React.FC<{ to: string; children: React.ReactNode; icon: React.ReactNode; active: boolean; onClick: () => void }> = ({ to, children, icon, active, onClick }) => (
+  <Link
+    to={to}
+    onClick={onClick}
+    className={`flex items-center gap-3 px-4 py-3 rounded-xl text-base font-bold transition-all ${
+      active 
+        ? 'bg-primary text-white shadow-lg shadow-primary/20' 
+        : 'text-slate-600 hover:bg-slate-50'
     }`}
   >
     {icon}
